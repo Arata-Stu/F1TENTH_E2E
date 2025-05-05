@@ -14,68 +14,76 @@ def convert_scan(scans, scan_range: float=30.0):
     scans = np.clip(scans, 0, 1)
     return scans
 
+
 class ScanBuffer:
-    def __init__(self, frame_size: int=1080, num_scan: int=2):
+    def __init__(self, frame_size: int = 1080,
+                 num_scan: int = 2,
+                 target_size: int = 60):
         """
-        frame_size: 1フレームあたりのデータ長（例: 1080）
-        k: バッファするフレーム数
+        frame_size: number of points per raw scan (e.g., 1080)
+        num_scan: number of frames to buffer/concatenate
+        target_size: if specified, downsample each scan to this length by equal-interval sampling
         """
         self.frame_size = frame_size
         self.num_scan = num_scan
+        self.target_size = target_size
         self.scan_window = deque(maxlen=num_scan)
 
     def add_scan(self, scan: np.ndarray):
-        """新しいスキャンデータを追加"""
+        """Add a new scan; must be length frame_size."""
         if scan.shape[0] != self.frame_size:
-            raise ValueError(f"scan の長さが {self.frame_size} ではありません: got {scan.shape[0]}")
+            raise ValueError(f"scan length {scan.shape[0]} != expected {self.frame_size}")
         self.scan_window.append(scan)
 
     def is_full(self) -> bool:
-        """num_scan フレーム分たまっているか"""
+        """Check if buffer has num_scan frames."""
         return len(self.scan_window) == self.num_scan
 
     def _pad_frames(self, frames: list) -> list:
         """
-        フレーム数が num_scan 未満なら、最後のフレームを繰り返して長さ num_scan にする
-        （len==1 のときは t=1 のフレームを num_scan 枚に；num_scan=2 なら 2 枚連結）
+        If fewer than num_scan frames, repeat the last frame to pad up to num_scan.
         """
         if not frames:
-            raise ValueError("バッファにフレームが存在しません")
+            raise ValueError("No frames in buffer")
         if len(frames) < self.num_scan:
             last = frames[-1]
-            pad = [last] * (self.num_scan - len(frames))
-            frames = frames + pad
+            frames = frames + [last] * (self.num_scan - len(frames))
         return frames
+
+    def _downsample(self, arr: np.ndarray) -> np.ndarray:
+        """
+        Downsample a 1D array to target_size points by equal-interval sampling.
+        """
+        if self.target_size is None or arr.size == self.target_size:
+            return arr
+        indices = np.linspace(0, arr.size - 1, self.target_size, dtype=int)
+        return arr[indices]
 
     def get_concatenated_numpy(self) -> np.ndarray:
         """
-        num_scan フレーム分を連結して返す（NumPy 配列）
-        - バッファに 1 フレームしかなければ、最後のフレームを繰り返して num_scan 枚分にパディング
-        - バッファが空なら例外
+        Return concatenated frames as a NumPy array, downsampling by equal-interval if target_size is set.
         """
         frames = list(self.scan_window)
         frames = self._pad_frames(frames)
-        # 1D 配列を横にくっつける
-        return np.hstack(frames)
+        processed = [self._downsample(f) for f in frames]
+        return np.hstack(processed)
 
     def get_concatenated_tensor(self,
                                 device: torch.device = None,
                                 dtype: torch.dtype = torch.float32) -> torch.Tensor:
         """
-        num_scan フレーム分を連結して返す（PyTorch Tensor）
-        - device, dtype を指定可能
-        - バッファに 1 フレームしかなければ、最後のフレームを繰り返して num_scan 枚分にパディング
+        Return concatenated frames as a PyTorch tensor, downsampling by equal-interval if target_size is set.
         """
-        # NumPy 配列のリスト → Tensor のリスト
         frames = list(self.scan_window)
         frames = self._pad_frames(frames)
         tensors = []
         for f in frames:
-            t = f if isinstance(f, torch.Tensor) else torch.from_numpy(f)
+            arr = self._downsample(f) if isinstance(f, np.ndarray) else f.numpy()
+            t = torch.from_numpy(arr) if isinstance(arr, np.ndarray) else f
             tensors.append(t)
         out = torch.cat(tensors, dim=0)
-        if device is not None:
+        if device:
             out = out.to(device)
-        if dtype is not None:
+        if dtype:
             out = out.to(dtype)
         return out

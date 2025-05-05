@@ -1,5 +1,6 @@
 import hydra
 import torch
+import numpy as np
 from omegaconf import DictConfig, OmegaConf
 
 from f1tenth_gym.maps.map_manager import MapManager, MAP_DICT
@@ -29,7 +30,7 @@ def main(cfg: DictConfig):
         a_lat_max=map_cfg.a_lat_max,
         smooth_sigma=map_cfg.smooth_sigma
     )
-    env = make_env(cfg.env, map_manager, cfg.param)
+    env = make_env(cfg.envs, map_manager, cfg.vehicle)
 
     planner = PurePursuitPlanner(wheelbase=cfg.planner.wheelbase,
                                  map_manager=map_manager,
@@ -53,7 +54,8 @@ def main(cfg: DictConfig):
     ## スキャンバッファの初期化
     scan_buffer = ScanBuffer(
         frame_size=cfg.envs.num_beams,
-        num_scan=cfg.scan_n
+        num_scan=cfg.scan_n,
+        target_size=cfg.dowansample_beam
     )
 
     ## 学習ループ
@@ -84,7 +86,7 @@ def main(cfg: DictConfig):
                     steer, speed = planner.plan(obs, id=i)
                     actions.append([steer, speed])
 
-            next_obs, reward, terminated, truncated, info = env.step(actions)
+            next_obs, reward, terminated, truncated, info = env.step(np.array(actions))
             done = terminated or truncated
 
             if cfg.render:

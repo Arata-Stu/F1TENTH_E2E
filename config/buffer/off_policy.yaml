@@ -1,0 +1,4 @@
+name: off_policy
+capacity: 1000000
+state_shape: ${..agent.state_dim}
+action_dim: ${..agent.action_dim}

@@ -119,12 +119,7 @@ class SACAgent:
     def update(self, replay_buffer, batch_size: int):
         # バッファからサンプル取得
         state, action, reward, next_state, done = replay_buffer.sample(batch_size)
-        state      = state.to(self.device)
-        action     = action.to(self.device)
-        reward     = reward.to(self.device)
-        next_state = next_state.to(self.device)
-        done       = done.to(self.device)
-
+        
         # --- Critic ターゲット値計算 ---
         with torch.no_grad():
             next_action, next_log_prob = self.policy.sample(next_state)

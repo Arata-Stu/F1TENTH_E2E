@@ -1,40 +1,54 @@
 import numpy as np
 import torch
+from typing import Union, Tuple
 
 class ReplayBuffer:
     """
     Off-policy RL 向け汎用リプレイバッファ。
-    add に渡されたデータはすべて NumPy 配列に変換して格納し、
-    sample では PyTorch Tensor で返却します。
+    add に渡された各要素は内部で NumPy 配列化し、
+    sample でまとめて Torch Tensor にして返却します。
     """
-    def __init__(self, capacity: int, state_shape: tuple, action_dim: int=2, device: str = "cpu"):
+    def __init__(self,
+                 capacity: int,
+                 state_shape: Union[int, Tuple[int, ...]],
+                 action_dim: int = 2,
+                 device: str = "cpu"):
         """
         Args:
             capacity (int): バッファの最大サイズ
-            state_shape (tuple): 状態ベクトルの形状 (例: (k * num_beams, ))
-            action_dim (int): 行動ベクトルの次元 (例: 2 for [steer, speed])
-            device (str): サンプリング時に返す torch.Tensor のデバイス
+            state_shape (int or tuple): 状態ベクトルの形状 (例: 1080 または (1080,))
+            action_dim (int): 行動ベクトルの次元
+            device (str): サンプリング時に返す Tensor のデバイス
         """
         self.capacity = capacity
         self.device = device
+
+        # state_shape が int ならタプル化
+        if isinstance(state_shape, int):
+            self.state_shape = (state_shape,)
+        else:
+            self.state_shape = state_shape
+        self.action_dim = action_dim
+
+        # バッファ初期化
+        self.reset()
+
+    def reset(self):
+        """バッファを空にしてすべての配列を再確保"""
         self.pos = 0
         self.full = False
-
-        # データ格納用に NumPy 配列を確保
-        self.states      = np.zeros((capacity, *state_shape), dtype=np.float32)
-        self.next_states = np.zeros((capacity, *state_shape), dtype=np.float32)
-        self.actions     = np.zeros((capacity, action_dim), dtype=np.float32)
-        self.rewards     = np.zeros((capacity, 1), dtype=np.float32)
-        self.dones       = np.zeros((capacity, 1), dtype=np.float32)
+        # storage にすべてまとめる
+        self.storage = {
+            "states":      np.zeros((self.capacity, *self.state_shape), dtype=np.float32),
+            "actions":     np.zeros((self.capacity, self.action_dim),    dtype=np.float32),
+            "rewards":     np.zeros((self.capacity, 1),                  dtype=np.float32),
+            "next_states": np.zeros((self.capacity, *self.state_shape),  dtype=np.float32),
+            "dones":       np.zeros((self.capacity, 1),                  dtype=np.float32),
+        }
 
     @staticmethod
     def _to_numpy(x) -> np.ndarray:
-        """
-        入力を必ず np.ndarray（dtype=float32）に変換する。
-        - torch.Tensor → .detach().cpu().numpy()
-        - list や tuple → np.array
-        - np.ndarray → float32 にキャスト
-        """
+        """入力を float32 の np.ndarray に変換"""
         if isinstance(x, torch.Tensor):
             x = x.detach().cpu().numpy()
         elif not isinstance(x, np.ndarray):
@@ -43,17 +57,16 @@ class ReplayBuffer:
 
     def add(self, state, action, reward, next_state, done):
         """
-        1 タイムステップ分のデータをバッファに追加。
-        どの型で渡されても NumPy 配列として格納される。
+        1 タイムステップ分のデータを追加。
+        どの型で渡されても NumPy 配列として格納。
         """
         idx = self.pos
-
-        # 強制的に NumPy 化
-        self.states[idx]      = self._to_numpy(state)
-        self.actions[idx]     = self._to_numpy(action)
-        self.rewards[idx, 0]  = float(self._to_numpy(reward))
-        self.next_states[idx] = self._to_numpy(next_state)
-        self.dones[idx, 0]    = float(self._to_numpy(done))
+        # 各キーに対して _to_numpy → 代入
+        self.storage["states"][idx]      = self._to_numpy(state)
+        self.storage["actions"][idx]     = self._to_numpy(action)
+        self.storage["rewards"][idx, 0]  = float(self._to_numpy(reward))
+        self.storage["next_states"][idx] = self._to_numpy(next_state)
+        self.storage["dones"][idx, 0]    = float(self._to_numpy(done))
 
         # ポインタ更新
         self.pos = (self.pos + 1) % self.capacity
@@ -62,19 +75,24 @@ class ReplayBuffer:
 
     def sample(self, batch_size: int):
         """
-        ミニバッチをランダムサンプリングし，torch.Tensor で返却。
+        ミニバッチをランダムサンプリングし，Tensor で返却。
+        returns: states, actions, rewards, next_states, dones
         """
         max_i = self.capacity if self.full else self.pos
         idxs = np.random.choice(max_i, size=batch_size, replace=False)
 
-        # NumPy → Torch Tensor に変換し，指定デバイスへ
-        states      = torch.from_numpy(self.states[idxs]).to(self.device)
-        actions     = torch.from_numpy(self.actions[idxs]).to(self.device)
-        rewards     = torch.from_numpy(self.rewards[idxs]).to(self.device)
-        next_states = torch.from_numpy(self.next_states[idxs]).to(self.device)
-        dones       = torch.from_numpy(self.dones[idxs]).to(self.device)
+        # 各配列を Torch Tensor に変換＆デバイス転送
+        batch = {}
+        for key, arr in self.storage.items():
+            batch[key] = torch.from_numpy(arr[idxs]).to(self.device)
 
-        return states, actions, rewards, next_states, dones
+        return (
+            batch["states"],
+            batch["actions"],
+            batch["rewards"],
+            batch["next_states"],
+            batch["dones"],
+        )
 
     def __len__(self):
         return self.capacity if self.full else self.pos
