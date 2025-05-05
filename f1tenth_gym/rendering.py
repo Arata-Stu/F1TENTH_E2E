@@ -28,11 +28,11 @@ Author: Hongrui Zheng
 """
 
 # opengl stuff
-# try:
-#     import pyglet
-#     from pyglet.gl import *
-# except ImportError:
-#     pass
+try:
+    import pyglet
+    from pyglet.gl import *
+except ImportError:
+    pass
 
 # other
 import numpy as np

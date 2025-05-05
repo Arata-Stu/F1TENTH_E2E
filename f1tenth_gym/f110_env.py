@@ -4,9 +4,9 @@ import os
 import time
 
 # gl関連のimportはそのまま
-# import pyglet
-# pyglet.options['debug_gl'] = False
-# from pyglet import gl
+import pyglet
+pyglet.options['debug_gl'] = False
+from pyglet import gl
 
 # 定数
 VIDEO_W = 600

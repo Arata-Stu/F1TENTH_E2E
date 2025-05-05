@@ -1,7 +1,7 @@
 import gymnasium as gym
 import numpy as np
 import math
-# from pyglet.gl import GL_POINTS
+from pyglet.gl import GL_POINTS
 
 
 from f1tenth_gym.maps.map_manager import MapManager
