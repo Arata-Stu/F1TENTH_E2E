@@ -6,7 +6,7 @@ from f1tenth_gym.maps.map_manager import MapManager, MAP_DICT
 from src.planner.purePursuit import PurePursuitPlanner
 from src.envs.envs import make_env
 from src.rewards.reward import make_raward
-from buffers.buffer import get_buffer
+from src.buffers.buffer import get_buffer
 from src.agents.agent import get_agent
 from src.utils.helper import convert_action, convert_scan, ScanBuffer
 
