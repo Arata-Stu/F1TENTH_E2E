@@ -41,7 +41,7 @@ def main(cfg: DictConfig):
     ## エージェントの初期化
     agent_cfg = cfg.agent
     agent = get_agent(agent_cfg=agent_cfg, device=device)
-    
+
     ## バッファの初期化
     buffer_cfg = cfg.buffer
     buffer = get_buffer(buffer_cfg=buffer_cfg, device=device)
@@ -86,6 +86,9 @@ def main(cfg: DictConfig):
 
             next_obs, reward, terminated, truncated, info = env.step(actions)
             done = terminated or truncated
+
+            if cfg.render:
+                env.render(cfg.render_mode)
             next_scan = next_obs['scans'][0]
             next_scan = convert_scan(next_scan, cfg.envs.max_beam_range)
             scan_buffer.add_scan(next_scan)

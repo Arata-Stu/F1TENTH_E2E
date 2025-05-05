@@ -10,3 +10,6 @@ num_steps: 10000
 scan_n: 2
 steer_range: 0.4
 speed_range: 10.0
+
+render: false
+render_mode: human ## human or human_fast
