@@ -1,0 +1,18 @@
+defaults:
+  - vehicle: default
+  - envs: default 
+  - planner: pure_pursuit
+
+num_episodes: ???
+num_steps: 10000
+
+
+render: True
+render_mode: human ## human or human_fast
+
+visualize_lidar: false  # LiDAR 可視化を有効にするか
+visualize_waypoints: true  # ウェイポイントの可視化を有効にするか
+
+hydra:
+  run:
+    dir: ./outputs/lane_follow/${now:%Y-%m-%d}/${now:%H-%M-%S}

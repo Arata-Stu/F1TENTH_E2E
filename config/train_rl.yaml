@@ -1,0 +1,12 @@
+# config/train_rl.yaml 
+defaults:
+  - vehicle: default
+  - envs: default 
+  - reward: ???
+
+num_episodes: 1000
+num_steps: 10000
+
+scan_n: 2
+steer_range: 0.4
+speed_range: 10.0
