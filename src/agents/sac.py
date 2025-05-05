@@ -79,7 +79,7 @@ class SACAgent:
                  hidden_dim: int,
                  actor_lr: float = 3e-4,
                  critic_lr: float = 3e-4,
-                 alpha_lr: float = 3e-4,      # ← α の学習率
+                 alpha_lr: float = 3e-4,      
                  gamma: float = 0.99,
                  tau: float = 0.005,
                  device: str = 'cpu'):
@@ -160,3 +160,27 @@ class SACAgent:
             'alpha_loss': alpha_loss.item(),
             'alpha_value': self.alpha.item()
         }
+    
+    def save(self, filepath: str):
+        """モデルとαの保存"""
+        torch.save({
+            'policy_state_dict': self.policy.state_dict(),
+            'critic_state_dict': self.critic.state_dict(),
+            'critic_target_state_dict': self.critic_target.state_dict(),
+            'policy_optimizer_state_dict': self.policy_optimizer.state_dict(),
+            'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
+            'log_alpha': self.log_alpha,
+            'alpha_optimizer_state_dict': self.alpha_optimizer.state_dict()
+        }, filepath)
+
+    def load(self, filepath: str):
+        """モデルとαの読み込み"""
+        checkpoint = torch.load(filepath, map_location=self.device)
+        self.policy.load_state_dict(checkpoint['policy_state_dict'])
+        self.critic.load_state_dict(checkpoint['critic_state_dict'])
+        self.critic_target.load_state_dict(checkpoint['critic_target_state_dict'])
+        self.policy_optimizer.load_state_dict(checkpoint['policy_optimizer_state_dict'])
+        self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
+        self.log_alpha = checkpoint['log_alpha'].to(self.device)
+        self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer_state_dict'])
+

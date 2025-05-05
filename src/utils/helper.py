@@ -38,6 +38,10 @@ class ScanBuffer:
     def is_full(self) -> bool:
         """Check if buffer has num_scan frames."""
         return len(self.scan_window) == self.num_scan
+    
+    def reset(self):
+        """Clear the scan buffer."""
+        self.scan_window.clear()
 
     def _pad_frames(self, frames: list) -> list:
         """

@@ -1,7 +1,9 @@
+import os
 import hydra
 import torch
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
+from torch.utils.tensorboard import SummaryWriter
 
 from f1tenth_gym.maps.map_manager import MapManager, MAP_DICT
 from src.planner.purePursuit import PurePursuitPlanner
@@ -63,6 +65,19 @@ def main(cfg: DictConfig):
     num_steps = cfg.num_steps
     num_agent = cfg.envs.num_agents
 
+    eval_interval = cfg.eval_interval
+    eval_episodes = cfg.eval_episodes
+
+    log_dir = cfg.log_dir
+    log_dir = os.path.join(log_dir, cfg.agent.name)
+    model_dir = cfg.ckpt_dir
+    model_dir = os.path.join(model_dir, cfg.agent.name)
+    os.makedirs(log_dir, exist_ok=True)
+    os.makedirs(model_dir, exist_ok=True)
+
+    writer = SummaryWriter(log_dir=log_dir)
+    best_reward = -float("inf")
+
     for episode in range(num_episodes):
         obs, info = env.reset()
         done = False
@@ -78,7 +93,7 @@ def main(cfg: DictConfig):
             for i in range(num_agent):
                 if i==0:
                     state = scan_buffer.get_concatenated_tensor()
-                    nn_action = agent.select_action(state)
+                    nn_action = agent.select_action(state, evaluate=False)
                     action = convert_action(nn_action, steer_range=cfg.steer_range, speed_range=cfg.speed_range)
                     actions.append(action)
                     
@@ -109,6 +124,67 @@ def main(cfg: DictConfig):
             if done:
                 break
 
+        # TensorBoard: 報酬の記録
+        writer.add_scalar("reward/total_reward", total_reward, global_step=episode)
+
+        # 毎 eval_interval エピソードごとに評価
+        if (episode + 1) % eval_interval == 0:
+            eval_reward = evaluate(env, agent, planner, scan_buffer, cfg, device)
+            writer.add_scalar("reward/eval_reward", eval_reward, global_step=episode)
+
+            if eval_reward > best_reward:
+                best_reward = eval_reward
+                agent.save(os.path.join(model_dir, "best_model.pth"))
+                print(f"🌟 Episode {episode}: New Best Eval Model Saved! eval_reward = {best_reward:.2f}")
+
+    writer.close()
+
+def evaluate(env, agent, planner, scan_buffer, cfg, device):
+    num_eval_episodes = cfg.eval_episodes
+    num_steps = cfg.num_steps
+    num_agents = cfg.envs.num_agents
+    total_rewards = []
+
+    for _ in range(num_eval_episodes):
+        obs, _ = env.reset()
+        scan_buffer.scan_window.clear()  # 評価前にバッファ初期化
+        scan = convert_scan(obs['scans'][0], cfg.envs.max_beam_range)
+        scan_buffer.add_scan(scan)
+
+        episode_reward = 0
+        for step in range(num_steps):
+            actions = []
+
+            for i in range(num_agents):
+                if i == 0:
+                    if not scan_buffer.is_full():
+                        action = [0.0, cfg.speed_range[0]]  # バッファが未満のときの仮アクション
+                    else:
+                        state = scan_buffer.get_concatenated_tensor()
+                        nn_action = agent.select_action(state, evaluate=True)
+                        action = convert_action(nn_action, cfg.steer_range, cfg.speed_range)
+                    actions.append(action)
+                else:
+                    steer, speed = planner.plan(obs, id=i)
+                    actions.append([steer, speed])
+
+            next_obs, _, terminated, truncated, _ = env.step(np.array(actions))
+            done = terminated or truncated
+            scan = convert_scan(next_obs['scans'][0], cfg.envs.max_beam_range)
+            scan_buffer.add_scan(scan)
+
+            reward = agent.reward_manager.get_reward(
+                obs=next_obs, pre_obs=obs, action=actions[0]
+            )
+            episode_reward += reward
+            obs = next_obs
+
+            if done:
+                break
+
+        total_rewards.append(episode_reward)
+
+    return np.mean(total_rewards)
 
     
 if __name__ == "__main__":
