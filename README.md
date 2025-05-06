@@ -25,7 +25,7 @@ F1tenth gym環境を用いた強化学習を行うプロジェクトです。
 ### 1. リポジトリのクローン
 ```bash
 git clone https://github.com/Arata-Stu/F1TENTH-E2E.git
-cd F1tenth-RL
+cd F1TENTH-E2E
 ```
 
 ### 2. 仮想環境の作成と有効化（Python）
