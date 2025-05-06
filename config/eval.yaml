@@ -1,0 +1,24 @@
+# config/train_rl.yaml 
+defaults:
+  - vehicle: default
+  - envs: default 
+  - planner: pure_pursuit
+  - reward: ???
+  - agent: sac
+
+ckpt_path: ???
+
+num_episodes: 1000
+num_steps: 10000
+batch_size: 256
+
+
+scan_n: 2
+dowansample_beam: 60
+steer_range: 0.4
+speed_range: ${envs.map.speed}
+
+render: false
+render_mode: human ## human or human_fast
+
+log_dir: ./logs/eval/

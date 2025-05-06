@@ -119,7 +119,13 @@ def main(cfg: DictConfig):
             buffer.add(state, action, reward, next_state, done)
 
             if len(buffer) > cfg.batch_size:
-                agent.update(buffer, cfg.batch_size)
+                # update() が返す dict を受け取る
+                loss_dict = agent.update(buffer, cfg.batch_size)
+
+                # 動的にすべてのキー／値ペアを TensorBoard に記録
+                # 例として "loss/critic_loss", "loss/actor_loss", ... のようにタグ付け
+                for key, value in loss_dict.items():
+                    writer.add_scalar(f"loss/{key}", value, global_step=episode)
 
             if done:
                 break
@@ -129,7 +135,7 @@ def main(cfg: DictConfig):
 
         # 毎 eval_interval エピソードごとに評価
         if (episode + 1) % eval_interval == 0:
-            eval_reward = evaluate(env, agent, planner, scan_buffer, cfg, device)
+            eval_reward = evaluate(env, agent, planner,reward_manager, scan_buffer, cfg, device)
             writer.add_scalar("reward/eval_reward", eval_reward, global_step=episode)
 
             if eval_reward > best_reward:
@@ -139,52 +145,66 @@ def main(cfg: DictConfig):
 
     writer.close()
 
-def evaluate(env, agent, planner, scan_buffer, cfg, device):
-    num_eval_episodes = cfg.eval_episodes
-    num_steps = cfg.num_steps
-    num_agents = cfg.envs.num_agents
+
+def evaluate(env, agent, planner, reward_manager, scan_buffer, cfg, device):
+    """
+    評価用のルーチン
+    - torch.no_grad() で勾配計算をオフ
+    - agent.eval()/agent.train() でモード切替
+    - 報酬計算を一貫
+    """
+    agent.eval()  # モデルを評価モードに
     total_rewards = []
 
-    for _ in range(num_eval_episodes):
+    # 評価エピソードループ
+    for ep in range(cfg.eval_episodes):
         obs, _ = env.reset()
-        scan_buffer.scan_window.clear()  # 評価前にバッファ初期化
-        scan = convert_scan(obs['scans'][0], cfg.envs.max_beam_range)
-        scan_buffer.add_scan(scan)
+        scan_buffer.scan_window.clear()  # バッファ完全クリア
+        # 最初のスキャン追加
+        first_scan = convert_scan(obs['scans'][0], cfg.envs.max_beam_range)
+        scan_buffer.add_scan(first_scan)
 
-        episode_reward = 0
-        for step in range(num_steps):
-            actions = []
+        episode_reward = 0.0
 
-            for i in range(num_agents):
-                if i == 0:
-                    if not scan_buffer.is_full():
-                        action = [0.0, cfg.speed_range[0]]  # バッファが未満のときの仮アクション
-                    else:
-                        state = scan_buffer.get_concatenated_tensor()
+        # no_grad コンテキストで勾配計算オフ
+        with torch.no_grad():
+            for step in range(cfg.num_steps):
+                actions = []
+                # エージェントとプランナーでアクション取得
+                for i in range(cfg.envs.num_agents):
+                    if i == 0:
+                        state = scan_buffer.get_concatenated_tensor().to(device)
                         nn_action = agent.select_action(state, evaluate=True)
                         action = convert_action(nn_action, cfg.steer_range, cfg.speed_range)
-                    actions.append(action)
-                else:
-                    steer, speed = planner.plan(obs, id=i)
-                    actions.append([steer, speed])
+                        actions.append(action)
+                    else:
+                        steer, speed = planner.plan(obs, id=i)
+                        actions.append([steer, speed])
 
-            next_obs, _, terminated, truncated, _ = env.step(np.array(actions))
-            done = terminated or truncated
-            scan = convert_scan(next_obs['scans'][0], cfg.envs.max_beam_range)
-            scan_buffer.add_scan(scan)
+                # 環境ステップ
+                next_obs, _, terminated, truncated, _ = env.step(np.array(actions))
+                done = terminated or truncated
 
-            reward = agent.reward_manager.get_reward(
-                obs=next_obs, pre_obs=obs, action=actions[0]
-            )
-            episode_reward += reward
-            obs = next_obs
+                # 次のスキャンをバッファに追加
+                next_scan = convert_scan(next_obs['scans'][0], cfg.envs.max_beam_range)
+                scan_buffer.add_scan(next_scan)
 
-            if done:
-                break
+                # 報酬計算（トレーニング時と同じ reward_manager を使う想定）
+                r = reward_manager.get_reward(obs=next_obs, pre_obs=obs, action=actions[0])
+                episode_reward += r
+
+                obs = next_obs
+                if done:
+                    break
 
         total_rewards.append(episode_reward)
 
-    return np.mean(total_rewards)
+    agent.train()  # 忘れずにトレーニングモードに戻す
+
+    avg_reward = float(np.mean(total_rewards))
+    std_reward = float(np.std(total_rewards))
+    print(f"[Eval] 平均報酬: {avg_reward:.2f} ± {std_reward:.2f} over {cfg.eval_episodes} episodes")
+    return avg_reward
 
     
 if __name__ == "__main__":

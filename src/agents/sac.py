@@ -105,6 +105,18 @@ class SACAgent:
     @property
     def alpha(self):
         return self.log_alpha.exp()
+    
+    def eval(self):
+        """評価モードに切り替え"""
+        self.policy.eval()
+        self.critic.eval()
+        self.critic_target.eval()
+
+    def train(self):
+        """訓練モードに切り替え"""
+        self.policy.train()
+        self.critic.train()
+        self.critic_target.train()
 
     def select_action(self, state, evaluate: bool = False):
         state = state.to(self.device).unsqueeze(0)
