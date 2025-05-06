@@ -23,6 +23,10 @@ def main(cfg: DictConfig):
 
     ## 環境の作成
     map_cfg = cfg.envs.map
+    """
+    f1tenth_gyn/maps 内にあるマップを簡単に指定できるようにするためのもの
+    """
+    
     map_manager = MapManager(
         map_name=map_cfg.name,
         map_ext=map_cfg.ext,
@@ -32,6 +36,10 @@ def main(cfg: DictConfig):
         a_lat_max=map_cfg.a_lat_max,
         smooth_sigma=map_cfg.smooth_sigma
     )
+    """
+    F1tenth gym 環境の作成 
+    
+    """
     env = make_env(cfg.envs, map_manager, cfg.vehicle)
 
     planner = PurePursuitPlanner(wheelbase=cfg.planner.wheelbase,
