@@ -38,10 +38,13 @@ def main(cfg: DictConfig):
     )
     """
     F1tenth gym 環境の作成 
-    
+    make_env()で, 環境を取得している
     """
     env = make_env(cfg.envs, map_manager, cfg.vehicle)
 
+    """
+    プランナの定義: CPUの動作に利用する, もしくは報酬関数(TAL)にも使われる
+    """
     planner = PurePursuitPlanner(wheelbase=cfg.planner.wheelbase,
                                  map_manager=map_manager,
                                  max_reacquire=cfg.planner.max_reacquire,
@@ -62,6 +65,10 @@ def main(cfg: DictConfig):
     reward_manager = make_raward(reward_cfg=reward_cfg, map_manager=map_manager)
 
     ## スキャンバッファの初期化
+    """
+    時刻t-1とtのスキャンを統合してstateにするためのバッファ
+    num_scanを指定すると, 3frame間のスキャンを保持することもできる
+    """
     scan_buffer = ScanBuffer(
         frame_size=cfg.envs.num_beams,
         num_scan=cfg.scan_n,
@@ -83,15 +90,21 @@ def main(cfg: DictConfig):
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(model_dir, exist_ok=True)
 
+    """
+    学習情報はTensorBoardに記録
+    """
     writer = SummaryWriter(log_dir=log_dir)
     best_reward = -float("inf")
 
     for episode in range(num_episodes):
+        # 環境のリセット
         obs, info = env.reset()
         done = False
         total_reward = 0
 
+        ### 初めのスキャンをバッファに追加
         scan = obs['scans'][0]
+        ### スキャンを正規化して, 0~1にする
         scan = convert_scan(scan, cfg.envs.max_beam_range)
         scan_buffer.add_scan(scan)
 
@@ -100,20 +113,37 @@ def main(cfg: DictConfig):
 
             for i in range(num_agent):
                 if i==0:
+                    ### 時刻t-1とtのスキャンが統合されたstateを取得
                     state = scan_buffer.get_concatenated_tensor()
+                    ### agentからアクションを取得
                     nn_action = agent.select_action(state, evaluate=False)
+                    ### 0~1のアクションを元のスケールに戻す
                     action = convert_action(nn_action, steer_range=cfg.steer_range, speed_range=cfg.speed_range)
                     actions.append(action)
                     
                 else:
+                    """
+                    CPUの行動を, plannerで取得
+                    """
                     steer, speed = planner.plan(obs, id=i)
                     actions.append([steer, speed])
 
+            # 環境ステップ
+            """
+            next_obs: 次の観測値
+            reward: 報酬
+            terminated: エピソード終了フラグ
+            truncated: エピソード終了フラグ
+            info: 環境からの追加情報
+            """
             next_obs, reward, terminated, truncated, info = env.step(np.array(actions))
             done = terminated or truncated
 
+            ### 可視化
             if cfg.render:
                 env.render(cfg.render_mode)
+
+            ### step後の状態を取得
             next_scan = next_obs['scans'][0]
             next_scan = convert_scan(next_scan, cfg.envs.max_beam_range)
             scan_buffer.add_scan(next_scan)
@@ -122,10 +152,11 @@ def main(cfg: DictConfig):
             reward = reward_manager.get_reward(obs=next_obs, pre_obs=obs, action=actions[0])
             total_reward += reward
 
-            # bufferに追加
+            # bufferに追加 (agentの学習に使われる)
             next_state = scan_buffer.get_concatenated_numpy()
             buffer.add(state, action, reward, next_state, done)
 
+            # バッファのサイズが指定したバッチサイズを超えたら学習
             if len(buffer) > cfg.batch_size:
                 # update() が返す dict を受け取る
                 loss_dict = agent.update(buffer, cfg.batch_size)
