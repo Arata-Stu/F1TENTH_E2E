@@ -13,3 +13,7 @@ render_mode: human
 
 data:
   num_waypoints: 10
+
+hydra:
+  run:
+    dir: ./outputs/collect_data/${now:%Y-%m-%d}/${now:%H-%M-%S}

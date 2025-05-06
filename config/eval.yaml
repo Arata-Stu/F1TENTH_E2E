@@ -22,3 +22,7 @@ render: false
 render_mode: human ## human or human_fast
 
 log_dir: ./logs/eval/
+
+hydra:
+  run:
+    dir: ./outputs/eval/${now:%Y-%m-%d}/${now:%H-%M-%S}

@@ -11,8 +11,8 @@ num_episodes: 1000
 num_steps: 10000
 batch_size: 256
 
-eval_interval: 10
-eval_episodes: 3
+eval_interval: 50
+eval_episodes: 1
 
 scan_n: 2
 dowansample_beam: 60
@@ -23,4 +23,8 @@ render: false
 render_mode: human ## human or human_fast
 
 log_dir: ./logs/train_rl/
-ckpt_dir: ./ckpts/
+ckpt_dir: ./ckpts/${now:%H-%M-%S}
+
+hydra:
+  run:
+    dir: ./outputs/train_rl/${now:%Y-%m-%d}/${now:%H-%M-%S}

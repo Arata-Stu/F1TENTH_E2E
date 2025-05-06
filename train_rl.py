@@ -133,6 +133,7 @@ def main(cfg: DictConfig):
         # TensorBoard: 報酬の記録
         writer.add_scalar("reward/total_reward", total_reward, global_step=episode)
 
+        print(f"Episode {episode}: Total Reward = {total_reward:.2f}")
         # 毎 eval_interval エピソードごとに評価
         if (episode + 1) % eval_interval == 0:
             eval_reward = evaluate(env, agent, planner,reward_manager, scan_buffer, cfg, device)
