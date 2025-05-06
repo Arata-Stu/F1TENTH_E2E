@@ -24,7 +24,7 @@ def main(cfg: DictConfig):
     ## 環境の作成
     map_cfg = cfg.envs.map
     map_manager = MapManager(
-        map_name=MAP_DICT[0],
+        map_name=map_cfg.name,
         map_ext=map_cfg.ext,
         speed=map_cfg.speed,
         downsample=map_cfg.downsample,

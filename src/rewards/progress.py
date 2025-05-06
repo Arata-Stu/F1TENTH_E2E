@@ -21,12 +21,11 @@ class ProgressReward(RewardBase):
         distance = current_progress - prev_progress
 
         ## 大きな値は無視
-        if distance > 10.0:
+        if abs(distance) > 1.0:
             distance = 0.0
 
         ## max 1.0
-        progress_reward = distance
-        progress_reward = np.clip(progress_reward, -1.0, 1.0)
+        progress_reward = distance * 0.01
         progress_reward *= self.ratio
         
         return base_reward + progress_reward
