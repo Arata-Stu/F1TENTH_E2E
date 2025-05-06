@@ -55,6 +55,6 @@ envs.map.name=Austin \
 num_episodes=10000 \
 num_steps=10000 \
 render=true \
-render=256 \
+batch_size=256 \
 buffer.capacity=1000000
 ```
